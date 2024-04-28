@@ -1,5 +1,4 @@
 #!/bin/bash
-#!/usr/bin/env python3
 
 # Install Kaggle API
 pip3 install kaggle
