@@ -6,6 +6,8 @@ from torchvision import models, transforms
 import pandas as pd
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+overall_metrics_df = pd.read_excel("overall_metrics.xlsx", index_col=0)
+per_class_metrics_df = pd.read_excel("per_class_metrics.xlsx", sheet_name=None)
 
 category_mapping = {
     0: "shirt, blouse",
@@ -140,6 +142,15 @@ threshold = st.sidebar.slider(
 
 model_path = f"model_{model_name.lower()}.pt"
 model = load_model(model_name, model_path)
+st.subheader("Overall Metrics")
+with st.expander("Expand to view overall metrics"):
+    overall_metrics = overall_metrics_df.loc[model_name]
+    st.write(overall_metrics)
+
+st.subheader("Per-Class Metrics")
+with st.expander("Expand to view per-class metrics"):
+    per_class_metrics = per_class_metrics_df[model_name]
+    st.write(per_class_metrics)
 
 st.subheader(f"Selected Model: {model_name}")
 # st.write("Model Description: ...")
