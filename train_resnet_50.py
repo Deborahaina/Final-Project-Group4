@@ -43,10 +43,7 @@ DATA_DIR = PATH + os.path.sep + "dataset" + os.path.sep + "train" + os.path.sep
 
 # %%
 df = pd.read_excel(EXCEL_PATH)
-# One-hot encode the 'Category' column
 one_hot_encoded = df["Category"].str.get_dummies(sep=",")
-
-# Convert the one-hot encoded DataFrame to a string of 0s and 1s separated by commas for each row
 df["target_class"] = one_hot_encoded.apply(lambda x: ",".join(x.astype(str)), axis=1)
 train_data, test_data = train_test_split(df, test_size=0.20, random_state=42)
 # %%
@@ -131,15 +128,12 @@ sampler = WeightedRandomSampler(
     sample_weights, num_samples=len(train_dataset), replacement=True
 )
 
-train_loader = DataLoader(train_dataset, batch_size=512, sampler=sampler, num_workers=6)
-validation_loader = DataLoader(test_dataset, batch_size=512, num_workers=6)
+train_loader = DataLoader(train_dataset, batch_size=64, sampler=sampler, num_workers=6)
+validation_loader = DataLoader(test_dataset, batch_size=64, num_workers=6)
 
-model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+model = models.resnet101(weights=models.ResNet101_Weights.DEFAULT)
 num_classes = 46
 
-# %%
-for param in model.parameters():
-    param.requires_grad = False
 
 model.fc = nn.Linear(model.fc.in_features, num_classes)
 model.fc.sigmoid = nn.Sigmoid()
@@ -151,8 +145,7 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode="max", factor=0.1, patience=2, verbose=True
 )
 
-num_epochs = 10
-unfreeze_epoch = 2
+num_epochs = 6
 model.to(device)
 best_val_f1_macro = 0
 
@@ -167,17 +160,6 @@ for epoch in range(num_epochs):
     model.train()
     train_loss = 0.0
     steps_train = 0.0
-    if epoch >= unfreeze_epoch:
-        for param in model.layer4.parameters():
-            param.requires_grad = True
-
-    if epoch >= unfreeze_epoch + 2:
-        for param in model.layer3.parameters():
-            param.requires_grad = True
-
-    if epoch >= unfreeze_epoch + 4:
-        for param in model.layer2.parameters():
-            param.requires_grad = True
     with tqdm(total=len(train_loader), desc="Epoch {}".format(epoch)) as pbar:
         for images, labels in train_loader:
             images = images.to(device)
@@ -189,7 +171,7 @@ for epoch in range(num_epochs):
             loss.backward()
             optimizer.step()
             steps_train += 1
-            train_loss += loss.item() * images.size(0)
+            train_loss += loss.item()  # * images.size(0)
             pbar.update(1)
             pbar.set_postfix_str("Train Loss: {:.5f}".format(train_loss / steps_train))
     train_loss /= len(train_dataset)
@@ -208,7 +190,7 @@ for epoch in range(num_epochs):
                 labels = labels.to(device)
                 outputs = model(images)
                 loss = criterion(outputs, labels)
-                val_loss += loss.item() * images.size(0)
+                val_loss += loss.item()  # * images.size(0)
                 predictions.extend(outputs.sigmoid().cpu().numpy() >= 0.5)
                 true_labels.extend(labels.cpu().numpy())
                 steps_test += 1
@@ -241,7 +223,8 @@ for epoch in range(num_epochs):
         best_val_f1_macro = f1_macro
         best_epoch = epoch + 1
         torch.save(
-            model.state_dict(), f"best_model_{datetime.datetime.now().isoformat()}.pt"
+            model.state_dict(),
+            f"model_resnet_101.pt",
         )
 
     print(classification_report(true_labels, predictions))
