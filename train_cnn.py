@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import os
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-import torch.nn.functional as F
 from PIL import Image
 
 
@@ -68,19 +67,23 @@ class CNN(nn.Module):
     def __init__(self, num_classes):
         super(CNN, self).__init__()
         self.conv1 = nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm2d(128)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.fc1 = nn.Linear(128 * 28 * 28, 512)
-        self.fc2 = nn.Linear(512, num_classes)
+        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(128, num_classes)
+        self.act = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = self.pool(F.relu(self.conv3(x)))
-        x = x.view(-1, 128 * 28 * 28)
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
+        x = self.pool(self.act(self.bn1(self.conv1(x))))
+        x = self.pool(self.act(self.bn2(self.conv2(x))))
+        x = self.pool(self.act(self.bn3(self.conv3(x))))
+        x = self.global_avg_pool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
         return x
 
 
@@ -104,7 +107,6 @@ test_transform = transforms.Compose(
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ]
 )
-
 
 train_dataset = MultiLabelImageDataset(
     list_IDs=train_data.index,
@@ -131,8 +133,8 @@ sampler = WeightedRandomSampler(
     sample_weights, num_samples=len(train_dataset), replacement=True
 )
 
-train_loader = DataLoader(train_dataset, batch_size=2, sampler=sampler, num_workers=4)
-validation_loader = DataLoader(test_dataset, batch_size=2, num_workers=4)
+train_loader = DataLoader(train_dataset, batch_size=16, sampler=sampler, num_workers=4)
+validation_loader = DataLoader(test_dataset, batch_size=16, num_workers=4)
 
 num_classes = 46
 model = CNN(num_classes)
@@ -142,7 +144,7 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode="max", factor=0.1, patience=2, verbose=True
 )
 
-num_epochs = 2
+num_epochs = 10
 model.to(device)
 best_val_f1_macro = 0
 
