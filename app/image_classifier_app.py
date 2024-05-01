@@ -142,7 +142,7 @@ model_path = f"model_{model_name.lower()}.pt"
 model = load_model(model_name, model_path)
 
 st.subheader(f"Selected Model: {model_name}")
-st.write("Model Description: ...")  # Add a brief description of the selected model
+# st.write("Model Description: ...")
 
 uploaded_image = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 
