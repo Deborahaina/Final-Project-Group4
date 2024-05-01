@@ -2,11 +2,9 @@ import streamlit as st
 import torch
 from PIL import Image
 from torch import nn
-
 from torchvision import models
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 category_mapping = {
     0: "shirt, blouse",
@@ -59,18 +57,29 @@ category_mapping = {
 
 
 @st.cache_resource
-def load_model(model_path):
-    model = models.vit_b_16(weights=models.ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1)
-    model.heads.head = nn.Linear(model.heads.head.in_features, len(category_mapping))
-    model.heads.head.sigmoid = nn.Sigmoid()
+def load_model(model_name, model_path):
+    if model_name == "ViT_B_16":
+        model = models.vit_b_16(weights=models.ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1)
+        model.heads.head = nn.Linear(
+            model.heads.head.in_features, len(category_mapping)
+        )
+        model.heads.head.sigmoid = nn.Sigmoid()
+    elif model_name == "ResNet_101":
+        model = models.resnet101(weights=models.ResNet101_Weights.DEFAULT)
+        model.fc = nn.Linear(model.fc.in_features, len(category_mapping))
+        model.fc.sigmoid = nn.Sigmoid()
+
     model.load_state_dict(torch.load(model_path))
     model.to(device)
     model.eval()
     return model
 
 
-def preprocess_image(image):
-    transform = models.ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1.transforms()
+def preprocess_image(image, model_name):
+    if model_name == "ViT_B_16":
+        transform = models.ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1.transforms()
+    elif model_name == "ResNet_101":
+        transform = models.ResNet101_Weights.DEFAULT.transforms()
     return transform(image).unsqueeze(0).to(device)
 
 
@@ -79,18 +88,26 @@ st.set_page_config(
     page_icon="🕴️",
     layout="centered",
 )
+
 st.title("🕴️ Fashion/Apparel Multi Label Image Classifier")
 
-# Load your trained model
-model_path = "model_vit_b_16.pt"
-model = load_model(model_path)
+st.sidebar.title("Options")
+threshold = st.sidebar.slider(
+    "Probability Threshold", min_value=0.0, max_value=1.0, value=0.5, step=0.05
+)
+model_name = st.sidebar.selectbox("Select Model", ["ViT_B_16", "ResNet_101"])
+
+# Load the selected model
+model_path = f"model_{model_name.lower()}.pt"
+model = load_model(model_name, model_path)
 
 uploaded_image = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 
-if uploaded_image is not None:
+if model and uploaded_image is not None:
     image = Image.open(uploaded_image)
     st.image(image, caption="Uploaded Image", use_column_width=True)
-    input_tensor = preprocess_image(image)
+
+    input_tensor = preprocess_image(image, model_name)
 
     with torch.no_grad():
         output = model(input_tensor)
@@ -98,5 +115,5 @@ if uploaded_image is not None:
 
     st.subheader("Classification Results")
     for i, probability in enumerate(probabilities):
-        if probability > 0.5:
+        if probability > threshold:
             st.write(f"{category_mapping[i]}: {probability:.2f}")
