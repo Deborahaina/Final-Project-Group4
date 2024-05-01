@@ -9,31 +9,9 @@ from torch.utils.data import Dataset
 import cv2
 import matplotlib.pyplot as plt
 import os
-import datetime
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-
-
-# %%
-# Focal Loss implementation
-class FocalLoss(nn.Module):
-    def __init__(self, alpha=1, gamma=2, reduction="mean"):
-        super(FocalLoss, self).__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.reduction = reduction
-
-    def forward(self, inputs, targets):
-        BCE_loss = nn.BCEWithLogitsLoss(reduction="none")(inputs, targets)
-        pt = torch.exp(-BCE_loss)
-        F_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
-
-        if self.reduction == "mean":
-            return torch.mean(F_loss)
-        elif self.reduction == "sum":
-            return torch.sum(F_loss)
-        else:
-            return F_loss
+from PIL import Image
 
 
 # %%
@@ -74,6 +52,7 @@ class MultiLabelImageDataset(Dataset):
 
         img = cv2.imread(file)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(img)  # Convert numpy array to PIL Image
 
         if self.transform:
             img = self.transform(img)
@@ -83,25 +62,29 @@ class MultiLabelImageDataset(Dataset):
 
 # %%
 
-train_transform = transforms.Compose(
-    [
-        transforms.ToPILImage(),
-        transforms.Resize(232),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
+# train_transform = transforms.Compose(
+#     [
+#         transforms.ToPILImage(),
+#         transforms.Resize(384),
+#         transforms.CenterCrop(384),
+#         transforms.ToTensor(),
+#         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+#     ]
+# )
 
-test_transform = transforms.Compose(
-    [
-        transforms.ToPILImage(),
-        transforms.Resize(232),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
+# test_transform = transforms.Compose(
+#     [
+#         transforms.ToPILImage(),
+#         transforms.Resize(384),
+#         transforms.CenterCrop(384),
+#         transforms.ToTensor(),
+#         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+#     ]
+# )
+
+train_transform = models.ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1.transforms()
+
+test_transform = models.ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1.transforms()
 
 train_dataset = MultiLabelImageDataset(
     list_IDs=train_data.index,
@@ -128,24 +111,25 @@ sampler = WeightedRandomSampler(
     sample_weights, num_samples=len(train_dataset), replacement=True
 )
 
-train_loader = DataLoader(train_dataset, batch_size=64, sampler=sampler, num_workers=6)
-validation_loader = DataLoader(test_dataset, batch_size=64, num_workers=6)
+train_loader = DataLoader(train_dataset, batch_size=48, sampler=sampler, num_workers=4)
+validation_loader = DataLoader(test_dataset, batch_size=48, num_workers=4)
 
-model = models.resnet101(weights=models.ResNet101_Weights.DEFAULT)
+model = models.vit_b_16(weights=models.ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1)
 num_classes = 46
 
 
-model.fc = nn.Linear(model.fc.in_features, num_classes)
-model.fc.sigmoid = nn.Sigmoid()
-model.fc.requires_grad = True
+model.heads.head = nn.Linear(model.heads.head.in_features, num_classes)
+model.heads.head.sigmoid = nn.Sigmoid()
+model.heads.head.requires_grad = True
 
-criterion = FocalLoss(alpha=1, gamma=2)
-optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.001)
+criterion = nn.BCEWithLogitsLoss()
+optimizer = torch.optim.Adam(model.heads.head.parameters(), lr=0.001)
+
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode="max", factor=0.1, patience=2, verbose=True
 )
 
-num_epochs = 6
+num_epochs = 10
 model.to(device)
 best_val_f1_macro = 0
 
@@ -224,7 +208,7 @@ for epoch in range(num_epochs):
         best_epoch = epoch + 1
         torch.save(
             model.state_dict(),
-            f"model_resnet_101.pt",
+            f"model_vit_b_16.pt",
         )
 
     print(classification_report(true_labels, predictions))
@@ -241,3 +225,11 @@ plt.legend()
 plt.show()
 
 # %%
+plt.figure(figsize=(10, 5))
+plt.plot(range(1, num_epochs + 1), train_losses, label="Training Loss")
+plt.plot(range(1, num_epochs + 1), val_losses, label="Validation Loss")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.legend()
+plt.savefig("torch_vit16_loss_plot.png")
+plt.show()

@@ -1,59 +1,33 @@
-# %%
+# https://github.com/huggingface/blog/blob/main/fine-tune-vit.md
+# https://huggingface.co/blog/fine-tune-vit
 import pandas as pd
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch import nn
-from torchvision import models, transforms
+from transformers import ViTFeatureExtractor, ViTForImageClassification
 from sklearn.metrics import accuracy_score, f1_score, classification_report
 import torch
 from torch.utils.data import Dataset
 import cv2
 import matplotlib.pyplot as plt
 import os
-import datetime
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-
-# %%
-# Focal Loss implementation
-class FocalLoss(nn.Module):
-    def __init__(self, alpha=1, gamma=2, reduction="mean"):
-        super(FocalLoss, self).__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.reduction = reduction
-
-    def forward(self, inputs, targets):
-        BCE_loss = nn.BCEWithLogitsLoss(reduction="none")(inputs, targets)
-        pt = torch.exp(-BCE_loss)
-        F_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
-
-        if self.reduction == "mean":
-            return torch.mean(F_loss)
-        elif self.reduction == "sum":
-            return torch.sum(F_loss)
-        else:
-            return F_loss
-
-
-# %%
 PATH = "/home/ubuntu/Final-Project-Group4"
 EXCEL_PATH = PATH + os.path.sep + "dataset" + os.path.sep + "final_dataset.xlsx"
 DATA_DIR = PATH + os.path.sep + "dataset" + os.path.sep + "train" + os.path.sep
 
-# %%
 df = pd.read_excel(EXCEL_PATH)
 one_hot_encoded = df["Category"].str.get_dummies(sep=",")
 df["target_class"] = one_hot_encoded.apply(lambda x: ",".join(x.astype(str)), axis=1)
 train_data, test_data = train_test_split(df, test_size=0.20, random_state=42)
-# %%
 
 
 class MultiLabelImageDataset(Dataset):
-    def __init__(self, list_IDs, type_data, transform=None):
+    def __init__(self, list_IDs, type_data, feature_extractor):
         self.type_data = type_data
         self.list_IDs = list_IDs
-        self.transform = transform
+        self.feature_extractor = feature_extractor
 
     def __len__(self):
         return len(self.list_IDs)
@@ -75,55 +49,31 @@ class MultiLabelImageDataset(Dataset):
         img = cv2.imread(file)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        if self.transform:
-            img = self.transform(img)
+        img = self.feature_extractor(img, return_tensors="pt")["pixel_values"].squeeze()
 
         return img, y
 
 
-# %%
-
-train_transform = transforms.Compose(
-    [
-        transforms.ToPILImage(),
-        transforms.Resize(232),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
-
-test_transform = transforms.Compose(
-    [
-        transforms.ToPILImage(),
-        transforms.Resize(232),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
+feature_extractor = ViTFeatureExtractor.from_pretrained("google/vit-base-patch16-224")
 
 train_dataset = MultiLabelImageDataset(
     list_IDs=train_data.index,
     type_data="train",
-    transform=train_transform,
+    feature_extractor=feature_extractor,
 )
 test_dataset = MultiLabelImageDataset(
     list_IDs=test_data.index,
     type_data="test",
-    transform=test_transform,
+    feature_extractor=feature_extractor,
 )
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
-# %%
 label_matrix = train_data["Category"].str.get_dummies(",")
 class_frequencies = label_matrix.sum()
 total_samples = class_frequencies.sum()
 class_weights = total_samples / (class_frequencies * len(class_frequencies))
 class_weight_tensor = torch.tensor(class_weights.values, dtype=torch.float)
 sample_weights = label_matrix.dot(class_weight_tensor).values
-
-# %%
 sampler = WeightedRandomSampler(
     sample_weights, num_samples=len(train_dataset), replacement=True
 )
@@ -131,16 +81,18 @@ sampler = WeightedRandomSampler(
 train_loader = DataLoader(train_dataset, batch_size=64, sampler=sampler, num_workers=6)
 validation_loader = DataLoader(test_dataset, batch_size=64, num_workers=6)
 
-model = models.resnet101(weights=models.ResNet101_Weights.DEFAULT)
 num_classes = 46
+model = ViTForImageClassification.from_pretrained(
+    "google/vit-base-patch16-224",
+    num_labels=num_classes,
+    id2label={str(i): str(i) for i in range(num_classes)},
+    label2id={str(i): str(i) for i in range(num_classes)},
+    problem_type="multi_label_classification",
+    ignore_mismatched_sizes=True,
+)
 
-
-model.fc = nn.Linear(model.fc.in_features, num_classes)
-model.fc.sigmoid = nn.Sigmoid()
-model.fc.requires_grad = True
-
-criterion = FocalLoss(alpha=1, gamma=2)
-optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.001)
+criterion = nn.BCEWithLogitsLoss()
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode="max", factor=0.1, patience=2, verbose=True
 )
@@ -154,8 +106,6 @@ val_losses = []
 val_f1_micros = []
 val_f1_macros = []
 
-# %%
-
 for epoch in range(num_epochs):
     model.train()
     train_loss = 0.0
@@ -166,12 +116,12 @@ for epoch in range(num_epochs):
             labels = labels.to(device)
 
             optimizer.zero_grad()
-            outputs = model(images)
+            outputs = model(images).logits
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             steps_train += 1
-            train_loss += loss.item()  # * images.size(0)
+            train_loss += loss.item()
             pbar.update(1)
             pbar.set_postfix_str("Train Loss: {:.5f}".format(train_loss / steps_train))
     train_loss /= len(train_dataset)
@@ -188,9 +138,9 @@ for epoch in range(num_epochs):
             for images, labels in validation_loader:
                 images = images.to(device)
                 labels = labels.to(device)
-                outputs = model(images)
+                outputs = model(images).logits
                 loss = criterion(outputs, labels)
-                val_loss += loss.item()  # * images.size(0)
+                val_loss += loss.item()
                 predictions.extend(outputs.sigmoid().cpu().numpy() >= 0.5)
                 true_labels.extend(labels.cpu().numpy())
                 steps_test += 1
@@ -224,7 +174,7 @@ for epoch in range(num_epochs):
         best_epoch = epoch + 1
         torch.save(
             model.state_dict(),
-            f"model_resnet_101.pt",
+            f"model_vit_base_patch16_224.pt",
         )
 
     print(classification_report(true_labels, predictions))
@@ -238,6 +188,5 @@ plt.plot(range(1, num_epochs + 1), val_losses, label="Validation Loss")
 plt.xlabel("Epoch")
 plt.ylabel("Loss")
 plt.legend()
+plt.savefig("vit_loss_plot.png")
 plt.show()
-
-# %%
