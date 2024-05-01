@@ -2,7 +2,7 @@ import streamlit as st
 import torch
 from PIL import Image
 from torch import nn
-from torchvision import models
+from torchvision import models, transforms
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -55,6 +55,38 @@ category_mapping = {
     45: "coat",
 }
 
+cnn_transform = transforms.Compose(
+    [
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ]
+)
+
+
+class CNN(nn.Module):
+    def __init__(self, num_classes):
+        super(CNN, self).__init__()
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm2d(128)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(128, num_classes)
+        self.act = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.pool(self.act(self.bn1(self.conv1(x))))
+        x = self.pool(self.act(self.bn2(self.conv2(x))))
+        x = self.pool(self.act(self.bn3(self.conv3(x))))
+        x = self.global_avg_pool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
 
 @st.cache_resource
 def load_model(model_name, model_path):
@@ -68,6 +100,8 @@ def load_model(model_name, model_path):
         model = models.resnet101(weights=models.ResNet101_Weights.DEFAULT)
         model.fc = nn.Linear(model.fc.in_features, len(category_mapping))
         model.fc.sigmoid = nn.Sigmoid()
+    elif model_name == "CNN":
+        model = CNN(len(category_mapping))
 
     model.load_state_dict(torch.load(model_path))
     model.to(device)
@@ -80,22 +114,24 @@ def preprocess_image(image, model_name):
         transform = models.ViT_B_16_Weights.IMAGENET1K_SWAG_E2E_V1.transforms()
     elif model_name == "ResNet_101":
         transform = models.ResNet101_Weights.DEFAULT.transforms()
+    elif model_name == "CNN":
+        transform = cnn_transform
     return transform(image).unsqueeze(0).to(device)
 
 
 st.set_page_config(
-    page_title="Fashion/Apparel Multi Label Image Classifier",
+    page_title="Fashion in the city",
     page_icon="🕴️",
     layout="centered",
 )
 
-st.title("🕴️ Fashion/Apparel Multi Label Image Classifier")
+st.title("🕴️ Fashion in the city")
 
 st.sidebar.title("Options")
 threshold = st.sidebar.slider(
     "Probability Threshold", min_value=0.0, max_value=1.0, value=0.5, step=0.05
 )
-model_name = st.sidebar.selectbox("Select Model", ["ViT_B_16", "ResNet_101"])
+model_name = st.sidebar.selectbox("Select Model", ["ViT_B_16", "ResNet_101", "CNN"])
 
 # Load the selected model
 model_path = f"model_{model_name.lower()}.pt"

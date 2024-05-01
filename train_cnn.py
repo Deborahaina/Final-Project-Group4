@@ -144,7 +144,7 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode="max", factor=0.1, patience=2, verbose=True
 )
 
-num_epochs = 10
+num_epochs = 20
 model.to(device)
 best_val_f1_macro = 0
 
