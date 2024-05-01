@@ -3,6 +3,7 @@ import torch
 from PIL import Image
 from torch import nn
 from torchvision import models, transforms
+import pandas as pd
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -120,36 +121,58 @@ def preprocess_image(image, model_name):
 
 
 st.set_page_config(
-    page_title="Fashion in the city",
+    page_title="Fashion Finder",
     page_icon="🕴️",
     layout="centered",
+    initial_sidebar_state="expanded",
 )
 
-st.title("🕴️ Fashion in the city")
+st.title("Fashion Finder: Classify Clothing Categories with AI")
+st.write(
+    "Upload an image and let our AI models identify the fashion categories present in it."
+)
 
 st.sidebar.title("Options")
+model_name = st.sidebar.selectbox("Select Model", ["ViT_B_16", "ResNet_101", "CNN"])
 threshold = st.sidebar.slider(
     "Probability Threshold", min_value=0.0, max_value=1.0, value=0.5, step=0.05
 )
-model_name = st.sidebar.selectbox("Select Model", ["ViT_B_16", "ResNet_101", "CNN"])
 
-# Load the selected model
 model_path = f"model_{model_name.lower()}.pt"
 model = load_model(model_name, model_path)
 
+st.subheader(f"Selected Model: {model_name}")
+st.write("Model Description: ...")  # Add a brief description of the selected model
+
 uploaded_image = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 
-if model and uploaded_image is not None:
+if uploaded_image is not None:
     image = Image.open(uploaded_image)
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    input_tensor = preprocess_image(image, model_name)
+    if st.button("Classify"):
+        input_tensor = preprocess_image(image, model_name)
 
-    with torch.no_grad():
-        output = model(input_tensor)
-        probabilities = torch.sigmoid(output).squeeze().tolist()
+        with torch.no_grad():
+            output = model(input_tensor)
+            probabilities = torch.sigmoid(output).squeeze().tolist()
 
-    st.subheader("Classification Results")
-    for i, probability in enumerate(probabilities):
-        if probability > threshold:
-            st.write(f"{category_mapping[i]}: {probability:.2f}")
+        st.subheader("Classification Results")
+        results = []
+        for i, probability in enumerate(probabilities):
+            if probability > threshold:
+                results.append((category_mapping[i], probability))
+
+        st.table(pd.DataFrame(results, columns=["Apparel", "Score"]))
+
+st.markdown("---")
+st.subheader("About Fashion Finder")
+st.write(
+    "Fashion Finder is an AI-powered app that helps you identify fashion categories in images. It utilizes state-of-the-art deep learning models to classify clothing items and accessories with high accuracy."
+)
+st.write("Key Features:")
+st.write(
+    "- Support for multiple deep learning models ViT, ResNet, CNN and many more coming..."
+)
+st.write("- Customizable probability threshold for fine-grained control")
+st.write("Explore the power of AI in fashion analysis with Fashion Finder!")
