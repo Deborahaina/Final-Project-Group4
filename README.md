@@ -1,11 +1,11 @@
 # Final-Project-Group4
 Deep Learning computer vision project
 
-First you need to make sure that you have the kaggle access token before running the scripts, to do use use the command below in the terminal
+To download this dataset, create a kaggle account and under Profile sign up for an access token. You can then proceed with running the scripts using the commands below in the terminal. 
 
 `vim ~/.kaggle/kaggle.json`
 
-You have to the c accept the competition rules from the kaggle account used before you can download the data.
+You have to accept the competition rules from the kaggle account before you can download the data. Check that if you get an error
 
 https://www.kaggle.com/competitions/imaterialist-fashion-2019-FGVC6/overview
 
