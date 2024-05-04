@@ -100,6 +100,7 @@ class ImageDataset(Dataset):
             transforms.Resize((299, 299)),
             v2.CenterCrop(299),
             transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0),
+            v2.RandomGrayscale(0.2),
             v2.ToDtype(torch.float32, scale=True),  # Normalize expects float input
             v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
@@ -121,6 +122,7 @@ class ImageDataset(Dataset):
                 y = y.split(",")
         else:
             y = xdf_dtest.target_class.get(ID)
+            
             if self.target_type == 2:
                 y = y.split(",")
 

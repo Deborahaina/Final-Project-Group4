@@ -1,6 +1,6 @@
-Perfomance analysis on validation set
+Perfomance metrics on validation set
 ----------------------------------------
-Accuracy: 0.40
-Precision Change: 0.40
-Recall: 0.30
-F1 score: 0.02
+Accuracy : 0.0451
+Precision : 0.55
+Recall: 0.31
+F1 score: 0.06815784649155984

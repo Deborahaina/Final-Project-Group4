@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project involves using deep learning techniques for computer vision tasks. The project includes multiple models for image classification, leveraging architectures like CNN, ResNet-101, and Vision Transformer (ViT). Additionally, a Streamlit app is provided for easy model interaction.
+This project involves using deep learning techniques for computer vision tasks. The project includes multiple models for image classification, leveraging architectures like CNN, ResNet-101, and Vision Transformer (ViT), InceptionNet and Retinanet with Resnet50 as bacbone. Additionally, a Streamlit app is provided for easy model interaction.
 
 ## Installation
 
@@ -93,4 +93,8 @@ python3 Code/train_resnet_50.py
 
 ```bash
 python3 Code/Code/train_torch_vit.py
+```
+### InceptionNet Model
+```
+python3 Code/inception_net.py
 ```
