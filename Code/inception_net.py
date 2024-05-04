@@ -5,18 +5,21 @@ import cv2
 import pandas as pd
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, cohen_kappa_score, precision_score, recall_score, matthews_corrcoef
+
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 from torch.utils.data import WeightedRandomSampler
 from torchvision import transforms
 from torchvision.transforms import v2
 from torchvision.transforms import ToTensor
 import torch.nn.functional as F
 from torch.nn import BCEWithLogitsLoss
-from torch.utils import data
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchvision import models
+
+
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
@@ -24,14 +27,15 @@ import matplotlib.pyplot as plt
 
 OR_PATH = os.getcwd()
 PATH = OR_PATH
-print(PATH)
+sep = os.path.sep
 
-FILENAME = PATH + os.path.sep + "dataset" + os.path.sep + "final_dataset.xlsx"
-DATA_DIR = PATH + os.path.sep + "dataset" + os.path.sep + "train" + os.path.sep
+FILENAME = PATH  + sep +"dataset"+ sep + "final_dataset.xlsx"
+DATA_DIR = PATH  + sep+ "dataset"+ sep+"train" + sep
+RESULTS = PATH + sep + sep+ "inception_results.txt"
 
 
 #Inception net must have image sizes as 299 * 299
-n_epoch = 8
+n_epoch = 9
 BATCH_SIZE = 32
 LR = 0.0005
 
@@ -85,7 +89,7 @@ class FashionNet(nn.Module):
     Returns the transformed images and labels
 """
 
-class ImageDataset(data.Dataset):
+class ImageDataset(Dataset):
     def __init__(self, list_IDs, type_data, target_type):
         #Initialization'
         self.type_data = type_data
@@ -237,10 +241,10 @@ def read_data(target_type):
     params = {'batch_size': BATCH_SIZE, 'num_workers':4}
     
     training_set = ImageDataset(partition['train'], 'train', target_type)
-    training_generator = data.DataLoader(training_set, **train_params)
+    training_generator = DataLoader(training_set, **train_params)
 
     test_set = ImageDataset(partition['test'], 'test', target_type)
-    test_generator = data.DataLoader(test_set, **params)
+    test_generator = DataLoader(test_set, **params)
 
     ## Make the channel as a list to make it variable
     return training_generator, test_generator
@@ -277,7 +281,7 @@ class FocalLoss(nn.Module):
         else:
             BCE_loss = F.binary_cross_entropy(inputs, targets, reduction='none')
         prob_t = torch.exp(-BCE_loss)
-        F_loss = -self.alpha * (1-prob_t)**self.gamma * BCE_loss
+        F_loss = self.alpha * (1-prob_t)**self.gamma * BCE_loss
 
         if self.reduction == 'mean':
             return torch.mean(F_loss)
@@ -295,6 +299,7 @@ def model_definition(pretrained=False):
     if pretrained == True:
         model = models.inception_v3(init_weights=True)
         model.fc = nn.Linear(model.fc.in_features, OUTPUTS_a)
+        model.fc.sigmoid = nn.Sigmoid()
         model.fc.requires_grad = True
     else:
         model = FashionNet()
@@ -518,6 +523,7 @@ def train_and_test(train_ds, test_ds, list_of_metrics, list_of_agg, save_on, pre
         
         # Metric Evaluation
         test_metrics = metrics_func(list_of_metrics, list_of_agg, real_labels, pred_labels)
+        acc = accuracy_score(real_labels, pred_labels)
         prec = precision_score(real_labels, pred_labels, average="micro")
         recall = recall_score(real_labels, pred_labels, average="micro")
         avg_test_loss = test_loss / steps_test
@@ -542,6 +548,18 @@ def train_and_test(train_ds, test_ds, list_of_metrics, list_of_agg, save_on, pre
             met_test_best = met_test
             
         print(f"Precision : {prec}, Recall : {recall}")
+        
+    output = output = (
+    f"Perfomance metrics on validation set\n"
+    f"----------------------------------------\n"
+    f"Accuracy : {acc:.4f}\n"
+    f"Precision : {prec:.2f}\n"
+    f"Recall: {recall:.2f}\n"
+    f"F1 score: {met_test_best}\n")
+
+    with open(RESULTS, "w") as txt_file:
+        txt_file.write(output)
+
         
     epochs = range(1, n_epoch + 1)
     # Plotting
