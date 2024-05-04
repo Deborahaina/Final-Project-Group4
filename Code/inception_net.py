@@ -35,7 +35,7 @@ RESULTS = PATH + sep + sep+ "inception_results.txt"
 
 
 #Inception net must have image sizes as 299 * 299
-n_epoch = 9
+n_epoch = 6
 BATCH_SIZE = 32
 LR = 0.0005
 
@@ -47,7 +47,7 @@ NICKNAME = "Group4"
 
 mlb = MultiLabelBinarizer()
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-THRESHOLD = 0.5
+THRESHOLD = 0.4
 SAVE_MODEL = True
 
 
