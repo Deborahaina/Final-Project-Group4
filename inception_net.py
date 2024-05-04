@@ -24,13 +24,14 @@ import matplotlib.pyplot as plt
 
 OR_PATH = os.getcwd()
 PATH = OR_PATH
+print(PATH)
 
 FILENAME = PATH + os.path.sep + "dataset" + os.path.sep + "final_dataset.xlsx"
 DATA_DIR = PATH + os.path.sep + "dataset" + os.path.sep + "train" + os.path.sep
 
 
 #Inception net must have image sizes as 299 * 299
-n_epoch = 4
+n_epoch = 8
 BATCH_SIZE = 32
 LR = 0.0005
 
@@ -231,7 +232,7 @@ def read_data(target_type):
     # Create WeightedRandomSampler
     sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(list_of_ids), replacement=True)
     
-    # Data Loaders, shuffle is mutually exclusive with sampler error, cannot pass in shuffle=True
+    # Data Loaders, shuffle is mutually exclusive with sampler error, cannot pass in shuffle=True as it undoes what the sampler did
     train_params = {'batch_size': BATCH_SIZE, 'num_workers':4, 'sampler':sampler}
     params = {'batch_size': BATCH_SIZE, 'num_workers':4}
     
@@ -276,7 +277,7 @@ class FocalLoss(nn.Module):
         else:
             BCE_loss = F.binary_cross_entropy(inputs, targets, reduction='none')
         prob_t = torch.exp(-BCE_loss)
-        F_loss = self.alpha * (1-prob_t)**self.gamma * BCE_loss
+        F_loss = -self.alpha * (1-prob_t)**self.gamma * BCE_loss
 
         if self.reduction == 'mean':
             return torch.mean(F_loss)
@@ -292,7 +293,7 @@ def model_definition(pretrained=False):
     # Compile the model
 
     if pretrained == True:
-        model = models.inception_v3()
+        model = models.inception_v3(init_weights=True)
         model.fc = nn.Linear(model.fc.in_features, OUTPUTS_a)
         model.fc.requires_grad = True
     else:
